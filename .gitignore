@@ -1,0 +1,18 @@
+# 忽略所有的 .log 文件
+*.log
+
+# 忽略所有的 .tmp 文件
+*.tmp
+
+# 忽略某个文件夹
+api/video_mixer/output_videos
+notes/output
+catoutput
+venv
+user_uploads
+
+# 忽略所有的 .DS_Store 文件（macOS 系统中生成的）
+.DS_Store
+
+# 忽略某个特定文件
+path/to/specific_file.txt
