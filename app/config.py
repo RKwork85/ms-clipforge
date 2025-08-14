@@ -53,5 +53,18 @@ def create_directories():
     UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
     LOG_DIR.mkdir(exist_ok=True, parents=True)
 
+"""
+class Settings(BaseSettings):
+    # ... 现有配置 ...
+    
+    # OSS服务配置
+    OSS_SERVICE_URL: str = "http://localhost:8889"  # OSS上传服务地址
+    OSS_SERVICE_TIMEOUT: int = 120  # 超时时间(秒)
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+"""
+
 # 在导入时创建目录
 create_directories()
