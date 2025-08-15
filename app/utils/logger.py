@@ -23,6 +23,7 @@ class ColoredFormatter(logging.Formatter):
             # 如果有请求ID，添加到日志中
             original_format = self._style._fmt
             self._style._fmt = f'%(asctime)s - %(name)s - %(levelname)s - [RequestID: {record.request_id}] - %(message)s'
+            # self._style._fmt = f'%(asctime)s - %(pathname)s - %(levelname)s - [RequestID: {record.request_id}] - %(message)s'
         
         log_color = self.COLORS.get(record.levelname, '')
         record.levelname = f"{log_color}{record.levelname}{self.COLORS['ENDC']}"

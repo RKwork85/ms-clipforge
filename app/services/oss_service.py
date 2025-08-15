@@ -146,6 +146,7 @@ class OSSService:
                 result = response.json()
                 
                 logger.info(f"批量上传完成: {result['summary']}")
+                print(result)
                 return result
                 
         except httpx.HTTPStatusError as e:

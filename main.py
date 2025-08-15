@@ -23,10 +23,10 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.datetime.now().strftime("%Y%m%d%H%M%S")}
 
 # 将文件上传端点路由添加到 FastAPI 应用中
-app.include_router(user_upload.router, prefix="/v1", tags=["user_upload"])
+app.include_router(user_upload.router, prefix="/v1/user_upload", tags=["user_upload"])
 
 # 将OSS上传端点路由添加到 FastAPI 应用中
-app.include_router(oss_upload.router, prefix="/v1/oss", tags=["oss_upload"])
+app.include_router(oss_upload.router, prefix="/v1/oss_upload", tags=["oss_upload"])
 
 if __name__ == "__main__":
     uvicorn.run(

@@ -55,8 +55,8 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
     current_time = datetime.datetime.now().isoformat()
     total_size = 0
 
-    # 构造存储路径: UPLOAD_DIR/username/task_option/video_type
-    user_task_path = UPLOAD_DIR / username / task_option / video_type 
+    # 构造存储路径: UPLOAD_DIR/username/task_option/video_type/task_id/
+    user_task_path = UPLOAD_DIR / username / task_option / video_type / task_id
     user_task_path.mkdir(parents=True, exist_ok=True)  # 确保目录存在
 
     for i, file in enumerate(files, 1):
@@ -117,7 +117,7 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
             
             # 记录文件信息
             file_record = FileRecord(
-                filename=save_path.name,  # 使用实际保存的文件名
+                filename=save_path.name,  # 使用实际保存的文件名 
                 original_filename=original_filename,
                 path=str(save_path),
                 upload_time=current_time,

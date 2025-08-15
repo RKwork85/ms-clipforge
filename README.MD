@@ -44,6 +44,7 @@
 │   │   │   │   ├── image_processor.py
 │   │   │   │   └── text_analyzer.py
 │   │   │   │   └── file_upload.py
+│   │   │   │   └── oss_upload.py
 │   │   │   └── __init__.py
 │   │   └── __init__.py
 │   │
@@ -52,17 +53,29 @@
 │   │   │   ├── combinator.py
 │   │   │   ├── report_generator.py
 │   │   │   └── __init__.py
+│   │
+│   │   ├── file_upload/ # 文件上传业务
+│   │   │   ├── file_manager.py
+│   │   │   ├── oss_uploader.py
+│   │   │   ├── user_uploader.py
+│   │   │   └── __init__.py
 │   │   │
 │   │   ├── image_processor/  # 图像处理器业务
 │   │   └── text_analyzer/    # 文本分析器业务
 │   │
+│   ├── middleware/               # 中间件
+│   │   ├── logging_middleware.py        # 日志中间件
+│   │   └── __init__.py
+│   │
 │   ├── models/               # 数据模型
 │   │   ├── schemas.py        # Pydantic模型
 │   │   ├── tasks.py          # 任务模型
+│   │   ├── file_record.py          # 文件记录模型
 │   │   └── __init__.py
 │   │
 │   ├── services/             # 服务层
 │   │   ├── task_service.py   # 任务管理服务
+│   │   ├── oss_service.py # 存储服务
 │   │   ├── storage_service.py # 存储服务
 │   │   └── __init__.py
 │   │
@@ -226,3 +239,5 @@
 ---
 
 让每次更新更加优雅，确保开发过程和版本控制清晰简洁。
+
+

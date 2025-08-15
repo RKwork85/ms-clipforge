@@ -61,6 +61,7 @@ async def upload_single_file_to_oss(request: SingleFileUploadRequest):
                     "data": result
                 }
             )
+            
         else:
             return JSONResponse(
                 status_code=500,

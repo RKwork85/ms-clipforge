@@ -8,8 +8,8 @@ UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", BASE_DIR / "user_uploads"))
 LOG_DIR = Path(os.getenv("LOG_DIR", BASE_DIR / "logs"))
 
 # 数据库配置
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
+# DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
+# SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
 
 # 日志配置
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
