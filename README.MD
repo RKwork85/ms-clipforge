@@ -238,6 +238,107 @@
 
 ---
 
-让每次更新更加优雅，确保开发过程和版本控制清晰简洁。
+// 目录结构待定: 融入消息队列的相关代码
+
+```
+├── app/                          # 主应用目录 
+│   ├── apis/                     # API端点（按版本组织） 
+│   │   ├── v1/                   # API版本1 
+│   │   │   ├── endpoints/        # 所有业务端点 
+│   │   │   │   ├── video_combinator.py 
+│   │   │   │   ├── image_processor.py 
+│   │   │   │   ├── text_analyzer.py 
+│   │   │   │   ├── file_upload.py 
+│   │   │   │   ├── oss_upload.py 
+│   │   │   │   ├── task_management.py    # 新增：任务管理API
+│   │   │   │   └── queue_management.py  # 新增：队列管理API
+│   │   │   └── __init__.py 
+│   │   └── __init__.py 
+│   │ 
+│   ├── core/                     # 核心业务逻辑 
+│   │   ├── video_combinator/     # 视频组合器业务 
+│   │   │   ├── combinator.py 
+│   │   │   ├── report_generator.py 
+│   │   │   └── __init__.py 
+│   │ 
+│   │   ├── file_upload/          # 文件上传业务 
+│   │   │   ├── file_manager.py 
+│   │   │   ├── oss_uploader.py 
+│   │   │   ├── user_uploader.py 
+│   │   │   └── __init__.py 
+│   │   │ 
+│   │   ├── image_processor/      # 图像处理器业务 
+│   │   ├── text_analyzer/        # 文本分析器业务 
+│   │   │
+│   │   └── queue_processor/      # 新增：队列处理器业务
+│   │       ├── task_dispatcher.py
+│   │       ├── handlers/
+│   │       │   ├── video_handler.py
+│   │       │   ├── image_handler.py
+│   │       │   ├── text_handler.py
+│   │       │   ├── notification_handler.py
+│   │       │   └── report_handler.py
+│   │       └── __init__.py
+│   │ 
+│   ├── middleware/               # 中间件 
+│   │   ├── logging_middleware.py # 日志中间件 
+│   │   ├── queue_middleware.py   # 新增：队列中间件
+│   │   └── __init__.py 
+│   │ 
+│   ├── models/                   # 数据模型 
+│   │   ├── schemas.py            # Pydantic模型 
+│   │   ├── tasks.py              # 任务模型 
+│   │   ├── file_record.py        # 文件记录模型 
+│   │   ├── queue_models.py       # 新增：队列相关模型
+│   │   └── __init__.py 
+│   │ 
+│   ├── services/                 # 服务层 
+│   │   ├── task_service.py       # 任务管理服务 
+│   │   ├── oss_service.py        # 存储服务 
+│   │   ├── storage_service.py    # 存储服务 
+│   │   ├── queue_service.py      # 新增：队列服务
+│   │   ├── redis_service.py      # 新增：Redis服务
+│   │   └── __init__.py 
+│   │ 
+│   ├── workers/                  # 新增：工作进程目录
+│   │   ├── video_worker.py       # 视频处理工作进程
+│   │   ├── base_worker.py        # 基础工作进程
+│   │   └── __init__.py
+│   │
+│   ├── utils/                    # 工具函数 
+│   │   ├── logger.py             # 日志配置 
+│   │   ├── file_utils.py         # 文件操作 
+│   │   ├── queue_utils.py        # 新增：队列工具
+│   │   └── __init__.py 
+│   │ 
+│   ├── config.py                 # 配置管理 
+│   ├── dependencies.py           # FastAPI依赖项 
+│   └── __init__.py 
+│ 
+├── tests/                        # 测试目录 
+│   ├── api/                      
+│   │   └── v1/ 
+│   │       ├── test_video_combinator.py 
+│   │       ├── test_task_management.py    # 新增
+│   │       └── test_queue_management.py  # 新增
+│   ├── core/ 
+│   │   └── test_queue_processor/         # 新增
+│   ├── workers/                          # 新增
+│   │   └── test_video_worker.py
+│   └── conftest.py 
+│ 
+├── scripts/                      # 脚本目录 
+│   ├── setup_db.py               # 数据库初始化脚本 
+│   ├── start_worker.py           # 新增：启动工作进程脚本
+│   └── ... 
+│ 
+├── .env                          # 环境变量 
+├── docker-compose.yml            # 新增：Docker Compose配置
+├── Dockerfile                    # Docker配置 
+├── requirements.txt              # 依赖列表 
+└── main.py                       # 应用入口
+
+```
+
 
 

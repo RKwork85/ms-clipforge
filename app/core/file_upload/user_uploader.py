@@ -3,10 +3,10 @@ from fastapi import HTTPException, UploadFile
 from app.models.file_record import FileRecord
 from app.utils.logger import get_logger, log_execution_time
 from app.config import UPLOAD_DIR, ALLOWED_USERS, MAX_FILE_SIZE, ALLOWED_FILE_EXTENSIONS
+from app.services.redis_api_service import redisAPIService
 from pathlib import Path
 from typing import List
 import uuid 
-import os
 
 # 获取专用的日志记录器
 logger = get_logger(__name__)
@@ -56,7 +56,8 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
     total_size = 0
 
     # 构造存储路径: UPLOAD_DIR/username/task_option/video_type/task_id/
-    user_task_path = UPLOAD_DIR / username / task_option / video_type / task_id
+    user_task_path = UPLOAD_DIR / username / task_option / video_type / "_".join([username,"task", task_id])
+
     user_task_path.mkdir(parents=True, exist_ok=True)  # 确保目录存在
 
     for i, file in enumerate(files, 1):
@@ -148,7 +149,26 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
         f"文件上传完成 | 成功: {success_count} | 失败: {failed_count} | "
         f"总大小: {total_size / 1024 / 1024:.2f}MB | 用户: {username} | 任务ID: {task_id}"
     )
-    
+  
+    print(task_option)
+    # 提交异步任务
+    task_result = None
+
+    try:
+        task_result = await redisAPIService.submit_task(
+            task_id=task_id,
+            task_type=task_option,
+            video_type="Baby素材处理混剪",
+            # data={"input_folder": str(user_task_path), "output_folder": str(Path(user_task_result_path))}
+            data={"input_folder": str(user_task_path), "output_folder": f".//{username}//{task_option}//{username}_{task_option}_{task_id}"}
+
+        )
+        logger.info(f"任务已提交到队列 | 任务ID: {task_id} | 队列返回: {task_result}")
+    except Exception as e:
+        logger.error(f"任务提交失败 | 任务ID: {task_id} | 错误: {str(e)}")
+        task_result = {"error": str(e)}
+
+
     result = {
         "task_id": task_id,  # 返回任务ID
         "status": "success" if failed_count == 0 else "partial_success" if success_count > 0 else "failed",
@@ -162,6 +182,7 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
         "failed_files": failed_files,
         "timestamp": current_time
     }
+
     
     if failed_count > 0:
         logger.warning(f"部分文件上传失败 | 失败文件: {[f['filename'] for f in failed_files]}")
