@@ -1,158 +1,211 @@
-from fastapi import APIRouter, HTTPException, status
+# app/apis/v1/oss_upload.py
+"""
+OSS文件上传客户端接口 - 用于请求已存在的OSS服务
+"""
+
+import httpx
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from fastapi.responses import JSONResponse
 from typing import List, Optional
-from pydantic import BaseModel, Field
 
-from app.core.file_upload.oss_uploader import oss_uploader
-from app.utils.logger import logger
-
+# 创建路由实例
 router = APIRouter()
 
-# 请求模型
-class SingleFileUploadRequest(BaseModel):
-    """单文件上传请求"""
-    file_path: str = Field(..., description="文件路径")
+# OSS服务的基础URL（根据实际部署地址修改）
+OSS_SERVICE_BASE_URL = "http://localhost:8890"  # 默认地址，请根据实际情况修改
 
-class BatchFileUploadRequest(BaseModel):
-    """批量文件上传请求"""
-    file_paths: List[str] = Field(..., description="文件路径列表")
-
-class TextUploadRequest(BaseModel):
-    """文本上传请求"""
-    content: str = Field(..., description="文本内容")
-    filename: str = Field(default="text_content.txt", description="文件名")
-
-class DirectoryUploadRequest(BaseModel):
-    """目录上传请求"""
-    directory_path: str = Field(..., description="目录路径")
-    file_extensions: Optional[List[str]] = Field(default=None, description="允许的文件扩展名")
-
-@router.get("/status")
-async def check_oss_service_status():
-    """检查OSS服务状态"""
+async def make_oss_request(
+    endpoint: str, 
+    method: str = "POST", 
+    files: Optional[dict] = None,
+    data: Optional[dict] = None,
+    params: Optional[dict] = None
+):
+    """
+    向OSS服务发送请求的通用函数
+    """
+    url = f"{OSS_SERVICE_BASE_URL}{endpoint}"
+    
     try:
-        is_available = await oss_uploader.check_service_status()
-        return {
-            "oss_service_available": is_available,
-            "status": "healthy" if is_available else "unhealthy",
-            "service_name": "OSS Upload Service"
-        }
-    except Exception as e:
-        logger.error(f"检查OSS服务状态异常: {str(e)}")
-        return {
-            "oss_service_available": False,
-            "status": "error",
-            "error": str(e)
-        }
-
-@router.post("/upload/single")
-async def upload_single_file_to_oss(request: SingleFileUploadRequest):
-    """上传单个文件到OSS"""
-    try:
-        logger.info(f"开始上传单个文件到OSS: {request.file_path}")
-        result = await oss_uploader.upload_file(request.file_path)
-        
-        if result.get("success"):
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": True,
-                    "message": "文件上传到OSS成功",
-                    "data": result
-                }
-            )
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # 发送请求
+            if method.upper() == "POST":
+                if files:
+                    # multipart/form-data 请求
+                    response = await client.post(url, files=files, params=params)
+                elif data:
+                    # application/json 请求
+                    response = await client.post(url, json=data, params=params)
+                else:
+                    response = await client.post(url, params=params)
+            else:
+                # GET请求
+                response = await client.get(url, params=params)
             
-        else:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "success": False,
-                    "message": "文件上传到OSS失败",
-                    "error": result.get("error", "未知错误")
-                }
-            )
-    except Exception as e:
-        logger.error(f"OSS单文件上传异常: {str(e)}")
+            response.raise_for_status()
+            return response.json()
+            
+    except httpx.HTTPStatusError as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"OSS上传过程中发生错误: {str(e)}"
+            status_code=e.response.status_code,
+            detail=f"OSS服务请求失败: {e.response.text}"
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"无法连接到OSS服务: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"OSS请求处理错误: {str(e)}"
         )
 
-@router.post("/upload/batch")
-async def upload_batch_files_to_oss(request: BatchFileUploadRequest):
-    """批量上传文件到OSS"""
+@router.get("/health")
+async def oss_health_check():
+    """
+    OSS服务健康检查
+    """
     try:
-        logger.info(f"开始批量上传文件到OSS，文件数量: {len(request.file_paths)}")
-        result = await oss_uploader.upload_files_batch(request.file_paths)
-        
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "message": "批量上传到OSS完成",
-                "data": result
-            }
-        )
+        result = await make_oss_request("/health", "GET")
+        return {
+            "status": "success",
+            "message": "OSS服务连接正常",
+            "oss_service_status": result
+        }
     except Exception as e:
-        logger.error(f"OSS批量上传异常: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"OSS批量上传过程中发生错误: {str(e)}"
+            status_code=500,
+            detail=f"OSS服务健康检查失败: {str(e)}"
         )
 
-@router.post("/upload/text")
-async def upload_text_to_oss(request: TextUploadRequest):
-    """上传文本内容到OSS"""
+@router.post("/single")
+async def upload_single(
+    file: UploadFile = File(...),
+    upload_path: str = Query("", description="文件上传路径")
+):
+    """
+    单文件上传接口 - 转发到OSS服务
+    """
     try:
-        logger.info(f"开始上传文本内容到OSS: {request.filename}")
-        result = await oss_uploader.upload_text(request.content, request.filename)
+        # 读取文件内容
+        file_content = await file.read()
         
-        if result.get("success"):
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": True,
-                    "message": "文本上传到OSS成功",
-                    "data": result
-                }
-            )
-        else:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "success": False,
-                    "message": "文本上传到OSS失败",
-                    "error": result.get("error", "未知错误")
-                }
-            )
+        # 准备文件数据
+        files = {
+            "file": (file.filename, file_content, file.content_type)
+        }
+        
+        # 准备查询参数
+        params = {}
+        if upload_path:
+            params["upload_path"] = upload_path
+        
+        # 转发到OSS服务
+        result = await make_oss_request("/upload/single", "POST", files=files, params=params)
+        return JSONResponse(content=result)
+        
     except Exception as e:
-        logger.error(f"OSS文本上传异常: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"OSS文本上传过程中发生错误: {str(e)}"
+            status_code=500,
+            detail=f"文件上传失败: {str(e)}"
+        )
+    finally:
+        # 重置文件指针
+        await file.seek(0)
+
+@router.post("/multiple")
+async def upload_multiple(
+    files: List[UploadFile] = File(...),
+    upload_path: str = Query("", description="文件上传路径")
+):
+    """
+    多文件上传接口 - 转发到OSS服务
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="未选择文件")
+    
+    try:
+        # 准备查询参数
+        params = {}
+        if upload_path:
+            params["upload_path"] = upload_path
+        
+        # 准备文件数据 - 使用列表而不是字典
+        files_list = []
+        for file in files:
+            file_content = await file.read()
+            files_list.append(("files", (file.filename, file_content, file.content_type)))
+            # 重置文件指针
+            await file.seek(0)
+        
+        # 转发到OSS服务 - 使用files参数传递列表
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{OSS_SERVICE_BASE_URL}/upload/multiple",
+                files=files_list,
+                params=params
+            )
+            response.raise_for_status()
+            return JSONResponse(content=response.json())
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"多文件上传失败: {str(e)}"
         )
 
-@router.post("/upload/directory")
-async def upload_directory_to_oss(request: DirectoryUploadRequest):
-    """上传目录中的文件到OSS"""
+@router.post("/text")
+async def upload_text(
+    text: str, 
+    filename: str = "text_file.txt",
+    upload_path: str = Query("", description="文件上传路径")
+):
+    """
+    文本内容上传接口 - 转发到OSS服务
+    """
     try:
-        logger.info(f"开始上传目录到OSS: {request.directory_path}")
-        result = await oss_uploader.upload_directory(
-            request.directory_path, 
-            request.file_extensions
-        )
+        # 准备查询参数
+        params = {}
+        if upload_path:
+            params["upload_path"] = upload_path
         
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "message": "目录上传到OSS完成",
-                "data": result
-            }
+        # 转发到OSS服务
+        result = await make_oss_request(
+            "/upload/text", 
+            "POST", 
+            data={"text": text, "filename": filename},
+            params=params
         )
+        return JSONResponse(content=result)
+        
     except Exception as e:
-        logger.error(f"OSS目录上传异常: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"OSS目录上传过程中发生错误: {str(e)}"
+            status_code=500,
+            detail=f"文本上传失败: {str(e)}"
+        )
+
+@router.get("/service_status")
+async def get_oss_service_status():
+    """
+    获取OSS服务状态信息
+    """
+    try:
+        # 获取健康状态
+        health_status = await make_oss_request("/health", "GET")
+        
+        # 获取根路径状态
+        root_status = await make_oss_request("/", "GET")
+        
+        return {
+            "status": "success",
+            "oss_service_health": health_status,
+            "oss_service_root": root_status,
+            "service_base_url": OSS_SERVICE_BASE_URL
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取OSS服务状态失败: {str(e)}"
         )

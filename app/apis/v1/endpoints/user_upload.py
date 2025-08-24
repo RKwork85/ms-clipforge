@@ -11,12 +11,14 @@ async def create_upload_files(
     task_option: str = Form(...),
     video_type: str = Form(...),
     username: str = Form(...),
+    only_file_upload: bool = Form(...)
+
 ):
     """
     上传文件并创建文件资源
     """
     # 上传文件并返回上传成功的结果
-    return await upload_files(files, task_option, video_type, username)
+    return await upload_files(files, task_option, video_type, username, only_file_upload)
 
 
 # # 2. 获取文件记录: 使用 GET 方法获取所有文件资源
