@@ -1,18 +1,51 @@
-import datetime
+from datetime import datetime
 from fastapi import HTTPException, UploadFile
 from app.models.file_record import FileRecord
 from app.utils.logger import get_logger, log_execution_time
 from app.config import UPLOAD_DIR, ALLOWED_USERS, MAX_FILE_SIZE, ALLOWED_FILE_EXTENSIONS
 from app.services.redis_api_service import redisAPIService
+from app.apis.v1.endpoints.oss_upload import make_oss_request
 from pathlib import Path
 from typing import List
-import uuid 
+import uuid
+import httpx
+import aiofiles
 
 # 获取专用的日志记录器
 logger = get_logger(__name__)
 
 # 确保上传目录存在
 UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
+# 获取当前时间戳（年月日格式）
+timestamp = datetime.now().strftime("%Y%m%d")
+
+async def upload_to_oss(file_path: Path, upload_path: str, original_filename: str):
+    """
+    将本地文件上传到OSS服务
+    """
+    try:
+        # 读取本地文件内容
+        async with aiofiles.open(file_path, 'rb') as f:
+            file_content = await f.read()
+        
+        # 准备文件数据
+        files = {
+            "file": (original_filename, file_content, "application/octet-stream")
+        }
+        
+        # 准备查询参数
+        params = {}
+        if upload_path:
+            params["upload_path"] = upload_path
+        
+        # 转发到OSS服务
+        result = await make_oss_request("/upload/single", "POST", files=files, params=params)
+        return result
+        
+    except Exception as e:
+        logger.error(f"OSS上传失败 | 文件: {file_path} | 错误: {str(e)}")
+        raise
+
 @log_execution_time
 async def upload_files(files: List[UploadFile], task_option: str, video_type: str, username: str, only_file_upload: bool):
     """
@@ -23,6 +56,7 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
         class_name: 任务分类/名称
         upload_type: 任务类型
         username: 用户名
+        only_file_upload: 是否只上传文件到OSS
     
     Returns:
         dict: 包含上传结果的字典
@@ -34,7 +68,7 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
     # 生成16位唯一task_id
     task_id = str(uuid.uuid4()).replace("-", "")[:16]
     
-    logger.info(f"开始处理文件上传 | 用户: {username} | 分类: {task_option} | 类型: {video_type} | 文件数: {len(files)} | 任务ID: {task_id}")
+    logger.info(f"开始处理文件上传 | 用户: {username} | 分类: {task_option} | 类型: {video_type} | 文件数: {len(files)} | 任务ID: {task_id} | OSS上传: {only_file_upload}")
     
     # 用户权限验证
     if username not in ALLOWED_USERS:
@@ -52,15 +86,18 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
 
     saved_files = []
     failed_files = []
-    current_time = datetime.datetime.now().isoformat()
+    oss_failed_files = []  # 记录OSS上传失败的文件
+    current_time = timestamp = datetime.now().strftime("%Y%m%d")
     total_size = 0
 
-    # 构造存储路径: UPLOAD_DIR/username/task_option/video_type/task_id/
-
+    # 构造存储路径
     if only_file_upload:
-        user_task_path  = UPLOAD_DIR / username / task_id  /  "_".join([username,"task", task_id])
+        user_task_path = UPLOAD_DIR / username / task_option / timestamp / "_".join([username, task_option, "task", task_id])
+        # OSS上传路径
+        oss_upload_path = f"{username}/{task_option}/{timestamp}"
     else:
-        user_task_path = UPLOAD_DIR / username / task_option / video_type / "_".join([username,"task", task_id])
+        user_task_path = UPLOAD_DIR / username / task_option / video_type / "_".join([username, "task", task_id])
+        oss_upload_path = ""
 
     user_task_path.mkdir(parents=True, exist_ok=True)  # 确保目录存在
 
@@ -110,32 +147,37 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
                 if counter > 100:  # 防止无限循环
                     raise Exception("Too many duplicate files")
             
-            # 保存文件
-            with open(save_path, "wb") as f:
-                f.write(contents)
-            
+            # 保存文件到本地
+            async with aiofiles.open(save_path, "wb") as f:
+                await f.write(contents)
+            logger.info(f"本地的路径为： {save_path}")
             # 验证文件是否成功写入
             if not save_path.exists() or save_path.stat().st_size != file_size:
                 raise Exception("File write verification failed")
             
             total_size += file_size
             
-            # 记录文件信息
-            # file_record = FileRecord(
-            #     filename=save_path.name,  # 使用实际保存的文件名 
-            #     original_filename=original_filename,
-            #     path=str(save_path),
-            #     upload_time=current_time,
-            #     class_name=task_option,
-            #     upload_type=video_type,
-            #     username=username,
-            #     size=round(file_size / 1024 / 1024, 2)
-            # )
+            # 如果只需要上传文件到OSS，则进行OSS上传
+            if only_file_upload:
+                try:
+                    oss_result = await upload_to_oss(save_path, oss_upload_path, original_filename)
+                    logger.info(f"文件成功上传到OSS | 文件: {original_filename} | OSS路径: {oss_upload_path}")
+                    print("oss上传结果：",oss_result)
+                except Exception as e:
+                    logger.error(f"文件上传到OSS失败 | 文件: {original_filename} | 错误: {str(e)}")
+                    oss_failed_files.append({
+                        "filename": original_filename,
+                        "saved_as": save_path.name,
+                        "error": str(e)
+                    })
             
+            # 记录文件信息
             saved_files.append({
                 "filename": original_filename,
                 "saved_as": save_path.name,
-                "size_mb": round(file_size / 1024 / 1024, 2)
+                "size_mb": round(file_size / 1024 / 1024, 2),
+                "local_path": str(save_path),
+                "oss_url": oss_result["data"]["url"]
             })
 
             logger.info(f"文件保存成功 | 原名: {original_filename} | 保存为: {save_path.name} | 大小: {file_size / 1024 / 1024:.2f}MB")
@@ -154,58 +196,62 @@ async def upload_files(files: List[UploadFile], task_option: str, video_type: st
         f"总大小: {total_size / 1024 / 1024:.2f}MB | 用户: {username} | 任务ID: {task_id}"
     )
   
-    print(task_option)
-    # 提交异步任务
-    task_result = None
+    # 准备返回结果
+    result = {
+        "task_id": task_id,  # 返回任务ID
+        "status": "success" if failed_count == 0 else "partial_success" if success_count > 0 else "failed",
+        "summary": {
+            "total_files": len(files),
+            "successful": success_count,
+            "failed": failed_count,
+            "total_size_mb": round(total_size / 1024 / 1024, 2)
+        },
+        "saved_files": saved_files,
+        "failed_files": failed_files,
+        "timestamp": current_time
+    }
+    
+    # 如果只上传文件到OSS，添加OSS上传结果
     if only_file_upload:
-        print("可以执行后续操作，oss服务器文件上传操作了! 上传的路径为：", user_task_path)
-        result = {
-            "task_id": task_id,  # 返回任务ID
-            "status": "success" if failed_count == 0 else "partial_success" if success_count > 0 else "failed",
-            "summary": {
-                "total_files": len(files),
-                "successful": success_count,
-                "failed": failed_count,
-                "total_size_mb": round(total_size / 1024 / 1024, 2)
-            },
-            "saved_files": saved_files,
-            "failed_files": failed_files,
-            "timestamp": current_time
-        }
-        return result
+        result["oss_upload_path"] = oss_upload_path
+        result["oss_failed_files"] = oss_failed_files
+        result["oss_upload_status"] = "success" if len(oss_failed_files) == 0 else "partial_success" if len(saved_files) > 0 else "failed"
+    
+    return result
 
-    else:
-        try:
-            task_result = await redisAPIService.submit_task(
-                task_id=task_id,
-                task_type=task_option,
-                video_type="Baby素材处理混剪",
-                # data={"input_folder": str(user_task_path), "output_folder": str(Path(user_task_result_path))}
-                data={"input_folder": str(user_task_path), "output_folder": f".//{username}//{task_option}//{username}_{task_option}_{task_id}"}
+## 重要代码
+    # else:
+    #     try:
+    #         task_result = await redisAPIService.submit_task(
+    #             task_id=task_id,
+    #             task_type=task_option,
+    #             video_type="Baby素材处理混剪",
+    #             # data={"input_folder": str(user_task_path), "output_folder": str(Path(user_task_result_path))}
+    #             data={"input_folder": str(user_task_path), "output_folder": f".//{username}//{task_option}//{username}_{task_option}_{task_id}"}
 
-            )
-            logger.info(f"任务已提交到队列 | 任务ID: {task_id} | 队列返回: {task_result}")
-        except Exception as e:
-            logger.error(f"任务提交失败 | 任务ID: {task_id} | 错误: {str(e)}")
-            task_result = {"error": str(e)}
+    #         )
+    #         logger.info(f"任务已提交到队列 | 任务ID: {task_id} | 队列返回: {task_result}")
+    #     except Exception as e:
+    #         logger.error(f"任务提交失败 | 任务ID: {task_id} | 错误: {str(e)}")
+    #         task_result = {"error": str(e)}
 
 
-        result = {
-            "task_id": task_id,  # 返回任务ID
-            "status": "success" if failed_count == 0 else "partial_success" if success_count > 0 else "failed",
-            "summary": {
-                "total_files": len(files),
-                "successful": success_count,
-                "failed": failed_count,
-                "total_size_mb": round(total_size / 1024 / 1024, 2)
-            },
-            "saved_files": saved_files,
-            "failed_files": failed_files,
-            "timestamp": current_time
-        }
+    #     result = {
+    #         "task_id": task_id,  # 返回任务ID
+    #         "status": "success" if failed_count == 0 else "partial_success" if success_count > 0 else "failed",
+    #         "summary": {
+    #             "total_files": len(files),
+    #             "successful": success_count,
+    #             "failed": failed_count,
+    #             "total_size_mb": round(total_size / 1024 / 1024, 2)
+    #         },
+    #         "saved_files": saved_files,
+    #         "failed_files": failed_files,
+    #         "timestamp": current_time
+    #     }
 
         
-        if failed_count > 0:
-            logger.warning(f"部分文件上传失败 | 失败文件: {[f['filename'] for f in failed_files]}")
+    #     if failed_count > 0:
+    #         logger.warning(f"部分文件上传失败 | 失败文件: {[f['filename'] for f in failed_files]}")
 
-        return result
+    #     return result
